@@ -1,13 +1,45 @@
-import React, { useState } from 'react';
 import axios from 'axios';
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).end('Method Not Allowed');
+  }
+
+  const { question } = req.body;
+
+  if (!question) {
+    return res.status(400).json({ error: 'Question is required.' });
+  }
+
+  try {
+    const aiResponse = await axios.post('https://api.openai.com/v1/chat/completions', {
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful medical AI assistant. Provide informative but careful responses, always reminding users to consult healthcare professionals for medical advice.'
+        },
+        { role: 'user', content: question }
+      ],
+      temperature: 0.7,
+    }, {
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    res.status(200).json({ answer: aiResponse.data.choices[0].message.content });
+  } catch (error) {
+    console.error('AI API Error:', error);
+    res.status(500).json({ error: 'Error generating response.' });
+  }
+}
+// ... existing imports ...
 
 const MedicalAI = () => {
-  const [question, setQuestion] = useState("");
-  const [response, setResponse] = useState("");
-  const [loading, setLoading] = useState(false);
+  // ... existing state declarations ...
 
   const handleAsk = async () => {
     if (!question.trim()) return;
@@ -16,36 +48,55 @@ const MedicalAI = () => {
     setResponse("");
 
     try {
-      const res = await axios.post('/api/ask-medical-ai', { question });
+      const res = await axios.post('/api/ask-medical-ai', { 
+        question: question.trim() 
+      });
       setResponse(res.data.answer);
     } catch (error) {
-      setResponse("An error occurred. Please try again later.");
+      console.error('Request Error:', error);
+      setResponse("An error occurred while getting the response. Please try again later.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !loading) {
+      handleAsk();
     }
   };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <Card className="w-full max-w-lg shadow-lg">
-        <CardContent>
-          <h1 className="text-2xl font-bold text-center mb-4">Ask Medical AI</h1>
+        <CardContent className="p-6">
+          <h1 className="text-2xl font-bold text-center mb-4">Medical AI Assistant</h1>
           <p className="text-sm text-gray-600 text-center mb-6">
-            Welcome to <strong>MedicalAIAssist.com</strong>. Enter your medical question below. Note: This tool does not provide professional medical advice.
+            Welcome to <strong>MedicalAIAssist.com</strong>. Enter your medical question below.
+            <br />
+            <span className="text-red-500">
+              Disclaimer: This tool provides general information only and should not replace professional medical advice.
+            </span>
           </p>
           <Input
             type="text"
             placeholder="Type your medical question..."
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
+            onKeyPress={handleKeyPress}
             className="mb-4"
+            disabled={loading}
           />
-          <Button onClick={handleAsk} disabled={loading} className="w-full">
-            {loading ? "Loading..." : "Ask"}
+          <Button 
+            onClick={handleAsk} 
+            disabled={loading || !question.trim()} 
+            className="w-full"
+          >
+            {loading ? "Getting Answer..." : "Ask Question"}
           </Button>
           {response && (
             <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-              <p className="text-gray-700">{response}</p>
+              <p className="text-gray-700 whitespace-pre-wrap">{response}</p>
             </div>
           )}
         </CardContent>
@@ -55,35 +106,3 @@ const MedicalAI = () => {
 };
 
 export default MedicalAI;
-
-// API route for handling AI responses
-// This would typically go in a file like `/api/ask-medical-ai.js` if using Next.js.
-export async function handler(req, res) {
-  if (req.method === 'POST') {
-    const { question } = req.body;
-
-    if (!question) {
-      return res.status(400).json({ error: 'Question is required.' });
-    }
-
-    try {
-      // Example of using an AI API like OpenAI GPT
-      const aiResponse = await axios.post('https://api.openai.com/v1/chat/completions', {
-        model: 'gpt-4',
-        messages: [{ role: 'user', content: question }],
-        temperature: 0.7,
-      }, {
-        headers: {
-          Authorization: `Bearer YOUR_API_KEY`,
-        },
-      });
-
-      res.status(200).json({ answer: aiResponse.data.choices[0].message.content });
-    } catch (error) {
-      res.status(500).json({ error: 'Error generating response.' });
-    }
-  } else {
-    res.setHeader('Allow', ['POST']);
-    res.status(405).end('Method Not Allowed');
-  }
-}
